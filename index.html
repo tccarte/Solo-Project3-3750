@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MTG Collection Manager</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>MTG Collection Manager</h1>
+    </div>
+
+    <nav class="tabs" aria-label="Views">
+      <button id="tab-list" class="tab active" type="button">List</button>
+      <button id="tab-form" class="tab" type="button">Add / Edit</button>
+      <button id="tab-stats" class="tab" type="button">Stats</button>
+    </nav>
+  </header>
+
+  <main class="container">
+    <!-- LIST VIEW -->
+    <section id="view-list" class="view">
+      <div class="toolbar">
+        <div class="searchWrap">
+          <label class="muted" for="search">Search</label>
+          <input id="search" type="search" placeholder="Name, set, type, colors..." />
+        </div>
+
+        <div class="toolbarRight">
+          <label class="muted" for="filterColor">Color</label>
+          <select id="filterColor">
+            <option value="">All</option>
+            <option value="W">W</option>
+            <option value="U">U</option>
+            <option value="B">B</option>
+            <option value="R">R</option>
+            <option value="G">G</option>
+            <option value="C">C</option>
+            <option value="M">M (Multicolor)</option>
+          </select>
+
+          <button id="newCardBtn" class="primary" type="button">+ New Card</button>
+        </div>
+      </div>
+
+      <div class="tableWrap">
+        <table class="table" aria-label="MTG Cards">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Set</th>
+              <th>Type</th>
+              <th class="center">MV</th>
+              <th class="center">Qty</th>
+              <th>Colors</th>
+              <th class="right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="cardsTbody"></tbody>
+        </table>
+      </div>
+
+      <div class="pagingControls">
+        <button id="prevPage" type="button" disabled>&larr; Previous</button>
+        <span id="pageIndicator">Page 1 of 1</span>
+        <button id="nextPage" type="button" disabled>Next &rarr;</button>
+      </div>
+
+      <p id="emptyState" class="muted hidden">No cards match your filters.</p>
+    </section>
+
+    <!-- FORM VIEW -->
+    <section id="view-form" class="view hidden">
+      <h2 id="formTitle">Add Card</h2>
+
+      <form id="cardForm" class="form">
+        <input type="hidden" id="cardId" />
+
+        <div class="grid">
+          <div class="field">
+            <label for="name">Card Name <span class="req">*</span></label>
+            <input id="name" type="text" maxlength="80" required />
+            <small class="hint">Example: Lightning Bolt</small>
+          </div>
+
+          <div class="field">
+            <label for="set">Set Code <span class="req">*</span></label>
+            <input id="set" type="text" maxlength="10" required />
+            <small class="hint">Example: M11, MH2, NEO</small>
+          </div>
+
+          <div class="field">
+            <label for="typeLine">Type Line <span class="req">*</span></label>
+            <input id="typeLine" type="text" maxlength="80" required />
+            <small class="hint">Example: Instant</small>
+          </div>
+
+          <div class="field">
+            <label for="manaValue">Mana Value (0–20) <span class="req">*</span></label>
+            <input id="manaValue" type="number" min="0" max="20" step="1" required />
+          </div>
+
+          <div class="field">
+            <label for="colors">Colors <span class="req">*</span></label>
+            <select id="colors" required>
+              <option value="">Choose…</option>
+              <option value="W">W (White)</option>
+              <option value="U">U (Blue)</option>
+              <option value="B">B (Black)</option>
+              <option value="R">R (Red)</option>
+              <option value="G">G (Green)</option>
+              <option value="C">C (Colorless)</option>
+              <option value="M">M (Multicolor)</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="rarity">Rarity <span class="req">*</span></label>
+            <select id="rarity" required>
+              <option value="">Choose…</option>
+              <option value="Common">Common</option>
+              <option value="Uncommon">Uncommon</option>
+              <option value="Rare">Rare</option>
+              <option value="Mythic">Mythic</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="quantity">Quantity (1–99) <span class="req">*</span></label>
+            <input id="quantity" type="number" min="1" max="99" step="1" required />
+          </div>
+
+          <div class="field">
+            <label for="condition">Condition <span class="req">*</span></label>
+            <select id="condition" required>
+              <option value="">Choose…</option>
+              <option value="NM">NM</option>
+              <option value="LP">LP</option>
+              <option value="MP">MP</option>
+              <option value="HP">HP</option>
+              <option value="DMG">DMG</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="notes">Notes</label>
+          <textarea id="notes" rows="3" maxlength="200" placeholder="Optional…"></textarea>
+        </div>
+
+        <div id="formError" class="error hidden"></div>
+
+        <div class="actions">
+          <button id="saveBtn" class="primary" type="submit">Save</button>
+          <button id="cancelBtn" type="button">Cancel</button>
+          <button id="deleteBtn" class="danger hidden" type="button">Delete</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- STATS VIEW -->
+    <section id="view-stats" class="view hidden">
+      <h2>Stats</h2>
+
+      <div class="statsGrid">
+        <div class="statCard">
+          <div class="statLabel">Total Records</div>
+          <div id="statTotal" class="statValue">0</div>
+        </div>
+
+        <div class="statCard">
+          <div class="statLabel">Average Mana Value</div>
+          <div id="statAvgMv" class="statValue">0</div>
+          <div class="muted small">Domain-specific stat</div>
+        </div>
+
+        <div class="statCard">
+          <div class="statLabel">Most Common Color</div>
+          <div id="statTopColor" class="statValue">—</div>
+          <div class="muted small">Domain-specific stat</div>
+        </div>
+      </div>
+
+      <h3>Color Distribution</h3>
+      <div id="colorBars" class="bars"></div>
+
+      <h3>Rarity Breakdown</h3>
+      <div id="rarityBreakdown" class="pillRow"></div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
