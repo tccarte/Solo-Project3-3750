@@ -2,7 +2,7 @@
 
 ## Live URL
 
-www.tccartemtgcollection.com
+http://www.tccartemtgcollection.com
 
 *(Also accessible at: https://web-production-de99a.up.railway.app)*
 
