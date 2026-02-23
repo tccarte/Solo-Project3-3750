@@ -2,14 +2,12 @@
 
 ## Live URL
 
-https://www.tccartemtgcollection.com
+www.tccartemtgcollection.com
 
 *(Also accessible at: https://web-production-de99a.up.railway.app)*
 
 ---
-
 ## Domain & Registrar
-
 - **Domain:** `www.tccartemtgcollection.com`
 - **Registrar:** Namecheap
 - DNS is pointed at Railway using a CNAME record. Railway handles TLS automatically via Let's Encrypt, so HTTPS is enabled with no extra configuration.
@@ -61,13 +59,6 @@ The frontend is served as static files directly by Flask, so there is only one s
 ### Updating the app
 
 Just push commits to the `main` branch:
-
-```bash
-git add .
-git commit -m "describe your change"
-git push
-```
-
 Railway picks up the push and redeploys within a minute or two. Zero downtime for most changes.
 
 ### Seeding the database
@@ -95,21 +86,3 @@ All sensitive configuration is managed through **environment variables** — not
 
 **Production:** Variables are set in the Railway dashboard and injected into the container at runtime. They are never stored in the repository.
 
----
-
-## Project Structure
-
-```
-.
-├── app.py            # Flask backend — all API routes and DB logic
-├── index.html        # Single-page frontend
-├── app.js            # Frontend JavaScript
-├── style.css         # Styles
-├── placeholder.svg   # Fallback image for cards with broken/missing URLs
-├── seed.py           # DB-direct seed script (requires psycopg2 locally)
-├── http_seed.py      # HTTP seed script (no local dependencies needed)
-├── requirements.txt  # Python dependencies
-├── Procfile          # Tells Railway/Gunicorn how to start the app
-├── .env.example      # Template for local environment variables
-└── DEPLOYMENT.md     # This file
-```
