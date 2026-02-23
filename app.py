@@ -8,7 +8,12 @@ from flask_cors import CORS
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
 
-DATABASE_URL     = os.environ["DATABASE_URL"]
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+# Railway sometimes provides postgres:// — psycopg2 requires postgresql://
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+# Diagnostic: print first 40 chars so we can see what was received in logs
+print(f"[STARTUP] DATABASE_URL starts with: {DATABASE_URL[:40]!r}", flush=True)
 VALID_COLORS     = {"W", "U", "B", "R", "G", "C", "M"}
 VALID_RARITIES   = {"Common", "Uncommon", "Rare", "Mythic"}
 VALID_CONDITIONS = {"NM", "LP", "MP", "HP", "DMG"}
@@ -19,6 +24,11 @@ VALID_PAGE_SIZES = {5, 10, 20, 50}
 # --- Database helpers ---
 
 def get_conn():
+    if not DATABASE_URL or not DATABASE_URL.startswith("postgresql://"):
+        raise RuntimeError(
+            f"DATABASE_URL is not a valid PostgreSQL URL. "
+            f"Got: {DATABASE_URL[:60]!r}"
+        )
     return psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
 
 
