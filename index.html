@@ -20,6 +20,7 @@
   </header>
 
   <main class="container">
+    <div id="successBanner" class="successBanner hidden" role="status" aria-live="polite"></div>
     <!-- LIST VIEW -->
     <section id="view-list" class="view">
       <div class="toolbar">
@@ -41,6 +42,27 @@
             <option value="M">M (Multicolor)</option>
           </select>
 
+          <label class="muted" for="sortBy">Sort</label>
+          <select id="sortBy">
+            <option value="created_at">Date Added</option>
+            <option value="name">Name</option>
+            <option value="mana_value">Mana Value</option>
+            <option value="rarity">Rarity</option>
+            <option value="quantity">Quantity</option>
+          </select>
+          <select id="sortDir">
+            <option value="DESC">DESC</option>
+            <option value="ASC">ASC</option>
+          </select>
+
+          <label class="muted" for="pageSize">Per page</label>
+          <select id="pageSize">
+            <option value="5">5</option>
+            <option value="10" selected>10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+          </select>
+
           <button id="newCardBtn" class="primary" type="button">+ New Card</button>
         </div>
       </div>
@@ -49,6 +71,7 @@
         <table class="table" aria-label="MTG Cards">
           <thead>
             <tr>
+              <th class="center">Img</th>
               <th>Name</th>
               <th>Set</th>
               <th>Type</th>
@@ -146,6 +169,12 @@
         </div>
 
         <div class="field">
+          <label for="imageUrl">Image URL</label>
+          <input id="imageUrl" type="url" maxlength="500" placeholder="https://cards.scryfall.io/..." />
+          <small class="hint">Optional. Paste a Scryfall image URL.</small>
+        </div>
+
+        <div class="field">
           <label for="notes">Notes</label>
           <textarea id="notes" rows="3" maxlength="200" placeholder="Optional…"></textarea>
         </div>
@@ -168,6 +197,12 @@
         <div class="statCard">
           <div class="statLabel">Total Records</div>
           <div id="statTotal" class="statValue">0</div>
+        </div>
+
+        <div class="statCard">
+          <div class="statLabel">Current Page Size</div>
+          <div id="statPageSize" class="statValue">10</div>
+          <div class="muted small">Rows shown per page</div>
         </div>
 
         <div class="statCard">

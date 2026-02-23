@@ -1,36 +1,66 @@
-import json
 import os
-import uuid
 from math import ceil
+import psycopg2
+import psycopg2.extras
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 CORS(app)
 
-DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cards.json")
-PAGE_SIZE = 10
-
-VALID_COLORS = {"W", "U", "B", "R", "G", "C", "M"}
-VALID_RARITIES = {"Common", "Uncommon", "Rare", "Mythic"}
+DATABASE_URL     = os.environ["DATABASE_URL"]
+VALID_COLORS     = {"W", "U", "B", "R", "G", "C", "M"}
+VALID_RARITIES   = {"Common", "Uncommon", "Rare", "Mythic"}
 VALID_CONDITIONS = {"NM", "LP", "MP", "HP", "DMG"}
+VALID_SORT_COLS  = {"name", "mana_value", "rarity", "quantity", "created_at"}
+VALID_PAGE_SIZES = {5, 10, 20, 50}
 
 
-# --- JSON file helpers ---
+# --- Database helpers ---
 
-def read_cards():
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, list) else []
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
+def get_conn():
+    return psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
 
 
-def write_cards(cards):
-    os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(cards, f, indent=2, ensure_ascii=False)
+def init_db():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS cards (
+                    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    name        VARCHAR(80)  NOT NULL,
+                    set_code    VARCHAR(10)  NOT NULL,
+                    type_line   VARCHAR(80)  NOT NULL,
+                    mana_value  SMALLINT     NOT NULL CHECK (mana_value BETWEEN 0 AND 20),
+                    colors      VARCHAR(1)   NOT NULL CHECK (colors IN ('W','U','B','R','G','C','M')),
+                    rarity      VARCHAR(10)  NOT NULL CHECK (rarity IN ('Common','Uncommon','Rare','Mythic')),
+                    quantity    SMALLINT     NOT NULL CHECK (quantity BETWEEN 1 AND 99),
+                    condition   VARCHAR(3)   NOT NULL CHECK (condition IN ('NM','LP','MP','HP','DMG')),
+                    notes       VARCHAR(200) NOT NULL DEFAULT '',
+                    image_url   VARCHAR(500) NOT NULL DEFAULT '',
+                    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+                )
+            """)
+        conn.commit()
+
+
+init_db()
+
+
+def row_to_card(row):
+    return {
+        "id":        str(row["id"]),
+        "name":      row["name"],
+        "set":       row["set_code"],
+        "typeLine":  row["type_line"],
+        "manaValue": row["mana_value"],
+        "colors":    row["colors"],
+        "rarity":    row["rarity"],
+        "quantity":  row["quantity"],
+        "condition": row["condition"],
+        "notes":     row["notes"],
+        "imageUrl":  row["image_url"],
+    }
 
 
 # --- Validation ---
@@ -39,13 +69,14 @@ def validate_card(data):
     if not isinstance(data, dict):
         return None, "Request body must be a JSON object."
 
-    name = str(data.get("name", "")).strip()
-    card_set = str(data.get("set", "")).strip()
+    name      = str(data.get("name", "")).strip()
+    card_set  = str(data.get("set", "")).strip()
     type_line = str(data.get("typeLine", "")).strip()
-    colors = str(data.get("colors", "")).strip()
-    rarity = str(data.get("rarity", "")).strip()
+    colors    = str(data.get("colors", "")).strip()
+    rarity    = str(data.get("rarity", "")).strip()
     condition = str(data.get("condition", "")).strip()
-    notes = str(data.get("notes", "")).strip()
+    notes     = str(data.get("notes", "")).strip()
+    image_url = str(data.get("imageUrl", "")).strip()
 
     if not name:
         return None, "Card Name is required."
@@ -88,16 +119,22 @@ def validate_card(data):
     if len(notes) > 200:
         return None, "Notes must be 200 characters or fewer."
 
+    if image_url and not (image_url.startswith("http://") or image_url.startswith("https://")):
+        return None, "Image URL must start with http:// or https://."
+    if len(image_url) > 500:
+        return None, "Image URL must be 500 characters or fewer."
+
     cleaned = {
-        "name": name,
-        "set": card_set,
-        "typeLine": type_line,
+        "name":      name,
+        "set":       card_set,
+        "typeLine":  type_line,
         "manaValue": mana_value,
-        "colors": colors,
-        "rarity": rarity,
-        "quantity": quantity,
+        "colors":    colors,
+        "rarity":    rarity,
+        "quantity":  quantity,
         "condition": condition,
-        "notes": notes,
+        "notes":     notes,
+        "imageUrl":  image_url,
     }
     return cleaned, None
 
@@ -106,52 +143,81 @@ def validate_card(data):
 
 @app.route("/api/cards", methods=["GET"])
 def list_cards():
-    cards = read_cards()
+    search   = request.args.get("search", "").strip()
+    color    = request.args.get("color", "").strip()
 
-    search = request.args.get("search", "").strip().lower()
-    color = request.args.get("color", "").strip()
+    sort_by  = request.args.get("sortBy", "created_at")
+    sort_dir = request.args.get("sortDir", "DESC").upper()
+    if sort_by not in VALID_SORT_COLS:
+        sort_by = "created_at"
+    if sort_dir not in {"ASC", "DESC"}:
+        sort_dir = "DESC"
 
-    if search:
-        cards = [
-            c for c in cards
-            if search in c.get("name", "").lower()
-            or search in c.get("set", "").lower()
-            or search in c.get("typeLine", "").lower()
-            or search in c.get("rarity", "").lower()
-            or search in c.get("colors", "").lower()
-        ]
-
-    if color:
-        cards = [c for c in cards if c.get("colors") == color]
-
-    total_count = len(cards)
-    total_pages = max(1, ceil(total_count / PAGE_SIZE))
+    try:
+        page_size = int(request.args.get("pageSize", 10))
+    except (ValueError, TypeError):
+        page_size = 10
+    if page_size not in VALID_PAGE_SIZES:
+        page_size = 10
 
     try:
         page = int(request.args.get("page", 1))
     except (ValueError, TypeError):
         page = 1
-    page = max(1, min(page, total_pages))
+    if page < 1:
+        page = 1
 
-    start = (page - 1) * PAGE_SIZE
-    end = start + PAGE_SIZE
-    page_cards = cards[start:end]
+    conditions = []
+    params = []
+    if search:
+        conditions.append(
+            "(name ILIKE %s OR set_code ILIKE %s OR type_line ILIKE %s "
+            "OR rarity ILIKE %s OR colors ILIKE %s)"
+        )
+        like = f"%{search}%"
+        params.extend([like, like, like, like, like])
+    if color:
+        conditions.append("colors = %s")
+        params.append(color)
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT COUNT(*) AS cnt FROM cards {where}", params)
+            total_count = cur.fetchone()["cnt"]
+
+            total_pages = max(1, ceil(total_count / page_size))
+            page = min(page, total_pages)
+            offset = (page - 1) * page_size
+
+            # sort_by and sort_dir are validated against allowlists above — safe to interpolate
+            cur.execute(
+                f"SELECT * FROM cards {where} "
+                f"ORDER BY {sort_by} {sort_dir} "
+                f"LIMIT %s OFFSET %s",
+                params + [page_size, offset]
+            )
+            rows = cur.fetchall()
 
     return jsonify({
-        "cards": page_cards,
-        "page": page,
+        "cards":      [row_to_card(r) for r in rows],
+        "page":       page,
         "totalPages": total_pages,
         "totalCount": total_count,
+        "pageSize":   page_size,
     })
 
 
 @app.route("/api/cards/<card_id>", methods=["GET"])
 def get_card(card_id):
-    cards = read_cards()
-    card = next((c for c in cards if c.get("id") == card_id), None)
-    if not card:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM cards WHERE id = %s", (card_id,))
+            row = cur.fetchone()
+    if not row:
         return jsonify({"error": "Card not found"}), 404
-    return jsonify({"card": card})
+    return jsonify({"card": row_to_card(row)})
 
 
 @app.route("/api/cards", methods=["POST"])
@@ -164,13 +230,24 @@ def create_card():
     if error:
         return jsonify({"error": error}), 400
 
-    cleaned["id"] = str(uuid.uuid4())
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO cards
+                    (name, set_code, type_line, mana_value, colors, rarity,
+                     quantity, condition, notes, image_url)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING *
+            """, (
+                cleaned["name"], cleaned["set"], cleaned["typeLine"],
+                cleaned["manaValue"], cleaned["colors"], cleaned["rarity"],
+                cleaned["quantity"], cleaned["condition"],
+                cleaned["notes"], cleaned["imageUrl"],
+            ))
+            row = cur.fetchone()
+        conn.commit()
 
-    cards = read_cards()
-    cards.insert(0, cleaned)
-    write_cards(cards)
-
-    return jsonify({"card": cleaned}), 201
+    return jsonify({"card": row_to_card(row)}), 201
 
 
 @app.route("/api/cards/<card_id>", methods=["PUT"])
@@ -183,71 +260,95 @@ def update_card(card_id):
     if error:
         return jsonify({"error": error}), 400
 
-    cards = read_cards()
-    idx = next((i for i, c in enumerate(cards) if c.get("id") == card_id), None)
-    if idx is None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE cards SET
+                    name = %s, set_code = %s, type_line = %s, mana_value = %s,
+                    colors = %s, rarity = %s, quantity = %s, condition = %s,
+                    notes = %s, image_url = %s
+                WHERE id = %s
+                RETURNING *
+            """, (
+                cleaned["name"], cleaned["set"], cleaned["typeLine"],
+                cleaned["manaValue"], cleaned["colors"], cleaned["rarity"],
+                cleaned["quantity"], cleaned["condition"],
+                cleaned["notes"], cleaned["imageUrl"],
+                card_id,
+            ))
+            row = cur.fetchone()
+        conn.commit()
+
+    if not row:
         return jsonify({"error": "Card not found"}), 404
-
-    cleaned["id"] = card_id
-    cards[idx] = cleaned
-    write_cards(cards)
-
-    return jsonify({"card": cleaned})
+    return jsonify({"card": row_to_card(row)})
 
 
 @app.route("/api/cards/<card_id>", methods=["DELETE"])
 def delete_card(card_id):
-    cards = read_cards()
-    idx = next((i for i, c in enumerate(cards) if c.get("id") == card_id), None)
-    if idx is None:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM cards WHERE id = %s RETURNING id", (card_id,))
+            row = cur.fetchone()
+        conn.commit()
+    if not row:
         return jsonify({"error": "Card not found"}), 404
-
-    cards.pop(idx)
-    write_cards(cards)
-
     return jsonify({"deleted": True})
 
 
 @app.route("/api/stats", methods=["GET"])
 def get_stats():
-    cards = read_cards()
-    total = len(cards)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT
+                    COUNT(*)                                            AS total_records,
+                    COALESCE(ROUND(AVG(mana_value)::numeric, 2), 0)   AS avg_mv,
+                    SUM(CASE WHEN colors = 'W' THEN 1 ELSE 0 END)     AS cnt_w,
+                    SUM(CASE WHEN colors = 'U' THEN 1 ELSE 0 END)     AS cnt_u,
+                    SUM(CASE WHEN colors = 'B' THEN 1 ELSE 0 END)     AS cnt_b,
+                    SUM(CASE WHEN colors = 'R' THEN 1 ELSE 0 END)     AS cnt_r,
+                    SUM(CASE WHEN colors = 'G' THEN 1 ELSE 0 END)     AS cnt_g,
+                    SUM(CASE WHEN colors = 'C' THEN 1 ELSE 0 END)     AS cnt_c,
+                    SUM(CASE WHEN colors = 'M' THEN 1 ELSE 0 END)     AS cnt_m,
+                    SUM(CASE WHEN rarity = 'Common'   THEN 1 ELSE 0 END) AS cnt_common,
+                    SUM(CASE WHEN rarity = 'Uncommon' THEN 1 ELSE 0 END) AS cnt_uncommon,
+                    SUM(CASE WHEN rarity = 'Rare'     THEN 1 ELSE 0 END) AS cnt_rare,
+                    SUM(CASE WHEN rarity = 'Mythic'   THEN 1 ELSE 0 END) AS cnt_mythic
+                FROM cards
+            """)
+            r = cur.fetchone()
 
-    avg_mv = 0
-    if total > 0:
-        avg_mv = round(sum(c.get("manaValue", 0) for c in cards) / total, 2)
+    total = r["total_records"]
+    avg_mv = float(r["avg_mv"] or 0)
 
-    color_counts = {"W": 0, "U": 0, "B": 0, "R": 0, "G": 0, "C": 0, "M": 0}
-    for c in cards:
-        col = c.get("colors", "")
-        if col in color_counts:
-            color_counts[col] += 1
+    color_counts = {
+        "W": r["cnt_w"], "U": r["cnt_u"], "B": r["cnt_b"],
+        "R": r["cnt_r"], "G": r["cnt_g"], "C": r["cnt_c"], "M": r["cnt_m"],
+    }
 
     most_common_color = "\u2014"
     most_common_count = 0
     if total > 0:
-        for k, v in color_counts.items():
-            if v > most_common_count:
-                most_common_count = v
-                most_common_color = k
-
-    rarity_counts = {"Common": 0, "Uncommon": 0, "Rare": 0, "Mythic": 0}
-    for c in cards:
-        r = c.get("rarity", "")
-        if r in rarity_counts:
-            rarity_counts[r] += 1
+        best = max(color_counts.items(), key=lambda x: x[1])
+        most_common_color, most_common_count = best
 
     return jsonify({
-        "totalRecords": total,
-        "averageManaValue": avg_mv,
-        "colorCounts": color_counts,
-        "mostCommonColor": most_common_color,
+        "totalRecords":         total,
+        "averageManaValue":     avg_mv,
+        "colorCounts":          color_counts,
+        "mostCommonColor":      most_common_color,
         "mostCommonColorCount": most_common_count,
-        "rarityCounts": rarity_counts,
+        "rarityCounts": {
+            "Common":   r["cnt_common"],
+            "Uncommon": r["cnt_uncommon"],
+            "Rare":     r["cnt_rare"],
+            "Mythic":   r["cnt_mythic"],
+        },
     })
 
 
-# --- Serve frontend (for local development) ---
+# --- Serve frontend ---
 
 @app.route("/")
 def serve_index():
@@ -255,4 +356,5 @@ def serve_index():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=False, host="0.0.0.0", port=port)

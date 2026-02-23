@@ -142,9 +142,42 @@ button.danger:hover { background: rgba(255,79,79,.18); }
   color: #ffd2d2;
 }
 
+/* Success toast banner */
+.successBanner {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 1000;
+  padding: 12px 20px;
+  border-radius: 10px;
+  background: rgba(41, 208, 127, 0.15);
+  border: 1px solid rgba(41, 208, 127, 0.6);
+  color: #a0ffd8;
+  font-size: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  max-width: 340px;
+  animation: fadeInUp 0.2s ease;
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Card image thumbnails */
+.thumbImg {
+  width: 40px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  display: block;
+  margin: 0 auto;
+}
+.noImg { color: var(--muted); }
+
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 12px;
   margin-top: 12px;
 }
@@ -190,6 +223,13 @@ button.danger:hover { background: rgba(255,79,79,.18); }
   font-size: 14px;
   min-width: 120px;
   text-align: center;
+}
+
+/* Toolbar wraps before full mobile breakpoint */
+@media (max-width: 900px) {
+  .toolbarRight {
+    flex-wrap: wrap;
+  }
 }
 
 /* Mobile responsiveness */
